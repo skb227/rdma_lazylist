@@ -27,10 +27,6 @@ message(STATUS "Using LOG_LEVEL=${LOG_LEVEL}")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(RDMA REQUIRED)
 
-# Build in the RDMA subfolder and in the benchmark subfolder
+# Build in the RDMA subfolder and in the experiment subfolder
 add_subdirectory(rdma)
-# add_subdirectory(benchmark)
-
-# ex. build the "lazy list" executable
-#add_executable(lazy_list lazy_list.cc)
-#target_link_libraries(lazy_list PRIVATE rdma)
+add_subdirectory(experiment)
