@@ -8,7 +8,7 @@ using namespace remus;
 /// lazy list implementation of a link list (sorted list), with wait-free contains 
 class LazyListSet {
 
-using CT = std::shared_pointer<remus::ComputeThread>; 
+using CT = std::shared_ptr<remus::ComputeThread>; 
 
 private:
     // node struct
@@ -17,7 +17,7 @@ private:
         remus::Atomic<Node*> next;
         remus::Atomic<uint64_t> lock; 
         remus::Atomic<bool> marked;
-    }
+    
 
     /// initialize node
     /// 
@@ -49,6 +49,8 @@ private:
         lock.store(0, ct);
     }
 
+    };
+
     /// validate helper method ??? --- would require use of marked tho... 
     bool validate(Node* pred, Node* curr, CT &ct) {
         return !pred->marked.load(ct) && !curr->marked.load(ct) && pred->next.load(ct) == curr; 
@@ -58,7 +60,7 @@ public:
 
     // sentinel pointers -- head and tail
     remus::Atomic<Node *> head; 
-    remus::Atmoic<Node *> tail; 
+    remus::Atomic<Node *> tail; 
 
     // 'This' to access consistent RDMA memory location, the shared data object address
     //      whereas 'this' is local to the thread? or to the LazyListSet object?
@@ -91,7 +93,7 @@ public:
     ///             'This', they'll all access the same remote memory 
     ///
     /// @param This 
-    LazyListSet(const remus::rdma_ptr<LazyListSet> &This) {
+    LazyListSet(const remus::rdma_ptr<LazyListSet> &This) 
         : This((LazyListSet *)((uintptr_t)This)) {}
 
         /*
@@ -100,7 +102,6 @@ public:
         // store in This
         This = (LazyListSet *)rawNetworkAddr;         
         */
-    }
 
     /// wait-free contains
     ///
@@ -110,7 +111,7 @@ public:
     bool contains (const int key, CT &ct) {
         Node* curr = This->head.load(ct); 
         Node* tail = This->tail.load(ct); 
-        while (curr->key.load(ct) < key.load(ct) && curr != tail) {
+        while (curr->key.load(ct) < key && curr != tail) {
                     // traverse (no locks) till first curr.key >= key
             curr = curr->next.load(ct); 
         }
@@ -170,10 +171,10 @@ public:
     /// @param ct   compute thread
     /// @return true if successful, false otherwise 
     bool remove(const int key, CT& ct) {
-        Node *tail = This->tail.load(ct); 
+        //Node *tail = This->tail.load(ct); 
         Node *pred, *curr; 
         while (true) {              // keep trying
-            pred = This->head; 
+            pred = This->head.load(ct); 
             curr = pred->next.load(ct); 
             while (curr->key.load(ct) < key) {
                     // traverse list (lock free) till first curr.key >= key

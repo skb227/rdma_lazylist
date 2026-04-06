@@ -2,6 +2,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include <iostream>
+
 #include <remus/remus.h>
 
 #include "cloudlab.h"
@@ -17,8 +19,8 @@ int main (int argc, char **argv) {
 
     // configure and parse arguments
     auto args = std::make_shared<remus::ArgMap>(); 
-    args->remus::import(remus::ARGS);
-    args->remus::import(DS_EXP_ARGS);
+    args->import(remus::ARGS);
+    args->import(DS_EXP_ARGS);
     args->parse(argc, argv);
 
     // extract args needed in every node 
@@ -59,6 +61,13 @@ int main (int argc, char **argv) {
         compute_node->connect_remote(memnodes);
     }
 
+    // if memory node, pause until it's received all expected connections
+    //      then spin until control channel in each segment is 1
+    //      then shutdown memory node
+    if (memory_node) {
+        memory_node->init_done(); 
+    }
+
     // if compute node, create threads and run experiment 
     if (id >= c0 && id <= cn) {
         // create ComputeThread contexts
@@ -89,8 +98,11 @@ int main (int argc, char **argv) {
                     // call constructor for LazyListSet
                     LazyListSet set_handler(set_ptr);
 
-        // workload test
 
+                    std::cout << "workload should go here!" << std::endl; 
+
+        // workload test
+/*
                     uint64_t numOps = 25;
                     uint64_t keyRange = 25; 
 
@@ -124,7 +136,7 @@ int main (int argc, char **argv) {
 
                     // results 
                     std::cout << "Thread " << i << " finished -- " << successIns << " inserts, " << successRem << " removes" << endl; 
-
+*/
         // end of workload test
                 
                     // wait till all threads finish workload test
@@ -138,10 +150,5 @@ int main (int argc, char **argv) {
         for (auto &t : worker_threads) {
             t.join(); 
         }
-    } else if (id >= m0 && id <= mn) {
-        // if only memory node, wait a bit before shutting down
-        pause(); 
-    }
-    return 0; 
-
-}
+    } 
+};

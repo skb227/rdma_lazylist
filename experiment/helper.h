@@ -10,9 +10,10 @@
 #include <remus/remus.h>
 
 
-std::string id_to_dns_name(uint64_t id) {
-  return std::string("node") + std::to_string(id);
-}
+// i already have this in cloudlab.h ...
+// std::string id_to_dns_name(uint64_t id) {
+//   return std::string("node") + std::to_string(id);
+// }
 
 // command-list options for integer set microbenchmarks 
 constexpr const char *NUM_OPS = "--num-ops"; 
