@@ -10,15 +10,15 @@
 
 int main (int argc, char **argv) {
 
-    using set_t = LazyListSet;
+    using set_t = LazyListSet;   // this LazyListSet doesn't accept a type, it's set to int
 
     // initialize remus
     remus::INIT(); 
 
     // configure and parse arguments
     auto args = std::make_shared<remus::ArgMap>(); 
-    args->import(remus::ARGS);
-    args->import(DS_EXP_ARGS);
+    args->remus::import(remus::ARGS);
+    args->remus::import(DS_EXP_ARGS);
     args->parse(argc, argv);
 
     // extract args needed in every node 
@@ -41,18 +41,16 @@ int main (int argc, char **argv) {
     // info for compute node
     std::shared_ptr<remus::ComputeNode> compute_node;
 
-    // if compute node, configure to be compute node
+    // if memory node, configure to be memory node
     if (id >= m0 && id <= mn) {
         // make the pools, await connections 
         memory_node.reset(new remus::MemoryNode(self, args));
     }
 
-    // if memory node, wait till receive all connections from CNs
-    //      then spin until control channel in each segment becomes 1 ?? 
-    //      then shutdown memory node
+    // if compute node
     if (id >= c0 && id <= cn) {
         compute_node.reset(new remus::ComputeNode(self, args)); 
-        // if this CN is also a Mn, then need to pass the rkeys to the local MN
+        // if this CN is also a MN, then need to pass the rkeys to the local MN
         //  there's no harm in doing them first
         if (memory_node.get() != nullptr) {
             auto rkeys = memory_node->get_local_rkeys(); 
@@ -81,8 +79,9 @@ int main (int argc, char **argv) {
         for (uint64_t i = 0; i < args->uget(remus::CN_THREADS); i++) {
             worker_threads.push_back(std::thread(
                 [&](uint64_t i) {
+                    // each node has its own compute thread context 
                     auto &ct = compute_threads[i]; 
-                    // wait for all threads to be created
+                    // wait for all threads to be created across all nodes
                     ct->arrive_control_barrier(total_threads);
 
                     // get the root, make a local reference to it
@@ -90,11 +89,47 @@ int main (int argc, char **argv) {
                     // call constructor for LazyListSet
                     LazyListSet set_handler(set_ptr);
 
-                    // the workload part but i don't have a workload... 
+        // workload test
+
+                    uint64_t numOps = 25;
+                    uint64_t keyRange = 25; 
+
+                    // thread-local random number generator -- seed with thread id to ensure uniqueness
+                    std::mt19937_64 rng(i + 42); 
+                    std::uniform_int_distribution<uint64_t> key_dist(1, keyRange); 
+                    std::uniform_int_distribution<int> op_dist(1, 100); 
+
+                    // to track success
+                    uint64_t successIns = 0; 
+                    uint64_t successRem = 0; 
+
+                    // for each thread, workload
+                    for (uint64_t op = 0; op < numOps; op++) {
+                        uint64_t key = key_dist(rng); 
+                        uint64_t op_type = op_dist(rng); 
+
+                        // try 20% insert, 10% remove, 70% contains
+                        if (op_type <= 20) {
+                            if (set_handler.insert(key, ct)) {
+                                successIns++; 
+                            }
+                        } else if (op_type <= 30) {
+                            if (set_handler.remove(key, ct)) {
+                                successRem++; 
+                            } 
+                        } else {
+                            set_handler.contains(key, ct); 
+                        }
+                    }
+
+                    // results 
+                    std::cout << "Thread " << i << " finished -- " << successIns << " inserts, " << successRem << " removes" << endl; 
+
+        // end of workload test
                 
+                    // wait till all threads finish workload test
                     ct->arrive_control_barrier(total_threads); 
 
-                    
                     // reclaim memory from prior phase
                     ct->ReclaimDeferred(); 
                 },
