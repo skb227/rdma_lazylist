@@ -19,7 +19,7 @@ constexpr const char *KEY_UB = "--key-ub";
 
 // an ARGS object for integer set microbenchmarks
 auto DS_EXP_ARGS = {
-    U64_ARG_OPT(NUM_OPS, "Number of operations to run per thread", 65536),
+    U64_ARG_OPT(NUM_OPS, "Number of operations to run per thread", 1000),
     U64_ARG_OPT(PREFILL, "Percent of elements to prefill the data structure", 50),
     U64_ARG_OPT(INSERT, "Percent of operations that should be inserts", 50),
     U64_ARG_OPT(REMOVE, "Percent of operations that should be removes", 50),

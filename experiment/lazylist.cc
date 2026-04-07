@@ -8,11 +8,10 @@
 
 #include "cloudlab.h"
 #include "nodes.h"
-#include "helper.h"
+#include "args.h"
+#include "workload.h"
 
 int main (int argc, char **argv) {
-
-    using set_t = LazyListSet;   // this LazyListSet doesn't accept a type, it's set to int
 
     // initialize remus
     remus::INIT(); 
@@ -79,7 +78,7 @@ int main (int argc, char **argv) {
 
         // CN 0 will construct the data structure and save it in root
         if (id == c0) {
-            auto set_ptr = set_t::New(compute_threads[0]);
+            auto set_ptr = LazyListSet::New(compute_threads[0]);
             compute_threads[0]->set_root(set_ptr); 
         }
 
@@ -93,57 +92,82 @@ int main (int argc, char **argv) {
                     // wait for all threads to be created across all nodes
                     ct->arrive_control_barrier(total_threads);
 
+                    std::cout << "past barrier 1" << std::endl; 
+
                     // get the root, make a local reference to it
                     auto set_ptr = ct->get_root<LazyListSet>();
                     // call constructor for LazyListSet
-                    LazyListSet set_handler(set_ptr);
+                    LazyListSet set_handle(set_ptr);
 
 
                     std::cout << "workload should go here!" << std::endl; 
 
         // workload test
-/*
-                    uint64_t numOps = 25;
-                    uint64_t keyRange = 25; 
 
-                    // thread-local random number generator -- seed with thread id to ensure uniqueness
-                    std::mt19937_64 rng(i + 42); 
-                    std::uniform_int_distribution<uint64_t> key_dist(1, keyRange); 
-                    std::uniform_int_distribution<int> op_dist(1, 100); 
+                    // make workload manager for this thread 
+                    test workload(set_handle, i, id); 
+                    ct->arrive_control_barrier(total_threads); 
 
-                    // to track success
-                    uint64_t successIns = 0; 
-                    uint64_t successRem = 0; 
+                    std::cout << "past barrier 2" << std::endl; 
 
-                    // for each thread, workload
-                    for (uint64_t op = 0; op < numOps; op++) {
-                        uint64_t key = key_dist(rng); 
-                        uint64_t op_type = op_dist(rng); 
+                    // prefill data structure
+                    workload.prefill(ct, args); 
+                    ct->arrive_control_barrier(total_threads); 
 
-                        // try 20% insert, 10% remove, 70% contains
-                        if (op_type <= 20) {
-                            if (set_handler.insert(key, ct)) {
-                                successIns++; 
-                            }
-                        } else if (op_type <= 30) {
-                            if (set_handler.remove(key, ct)) {
-                                successRem++; 
-                            } 
-                        } else {
-                            set_handler.contains(key, ct); 
-                        }
-                    }
+                    std::cout << "past barrier 3" << std::endl; 
 
-                    // results 
-                    std::cout << "Thread " << i << " finished -- " << successIns << " inserts, " << successRem << " removes" << endl; 
-*/
+                    // get starting time before thread does any work 
+                    std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now(); 
+                    ct->arrive_control_barrier(total_threads); 
+
+                    std::cout << "past barrier 4" << std::endl; 
+
+                    std::cout << "about to run workload" << std::endl; 
+
+                    // run workload 
+                    workload.run(ct, args); 
+                    ct->arrive_control_barrier(total_threads); 
+
+                    std::cout << "past barrier 5" << std::endl; 
+
+                    // compute end time 
+                    auto end_time = std::chrono::high_resolution_clock::now(); 
+                    auto duration = std::chrono::duration_cast<std::chrono::microseconds>( end_time - start_time ).count(); 
+
         // end of workload test
                 
                     // wait till all threads finish workload test
-                    ct->arrive_control_barrier(total_threads); 
+                    // ct->arrive_control_barrier(total_threads); 
 
                     // reclaim memory from prior phase
                     ct->ReclaimDeferred(); 
+
+                    std::cout << "compile metrics objects" << std::endl; 
+
+                    // first thread of cn0 works with data structure, creates global metrics object
+                    if (id == c0 && i == 0) {
+                        set_handle.destroy(ct); 
+                        auto metrics = ct->allocate<Metrics>(); 
+                        ct->Write(metrics, Metrics()); 
+                        ct->set_root(metrics); 
+                    }
+                    ct->arrive_control_barrier(total_threads); 
+
+                    std::cout << "past barrier six" << std::endl; 
+
+                    // aggregate metrics across all threads
+                    auto metrics = remus::rdma_ptr<Metrics>(ct->get_root<Metrics>());
+                    workload.collect(ct, metrics); 
+                    ct->arrive_control_barrier(total_threads); 
+
+                    std::cout << "past barrier seven" << std::endl; 
+
+                    // first thread of cn0 write aggregate metrics to file
+                    if (id == c0 && i == 0) {
+                        compute_threads[0]->Read(metrics).to_file(duration, compute_threads[0]); 
+                    }
+
+                    std::cout << "written to file " << std::endl; 
                 },
             i));
         }

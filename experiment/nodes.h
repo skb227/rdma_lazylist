@@ -75,15 +75,28 @@ public:
        
        auto tail = ct->New<Node>(); 
        //tail->init(K(), ct); 
-       tail->init(1000, ct);
+       tail->init(3000, ct);
+
+       // flush 
+    //    volatile auto f1 = tail->next.load(ct); 
+    //    f1; 
 
        auto head = ct->New<Node>(); 
        //head->init(K(), ct); 
        head->init(0, ct); 
        head->next.store(tail, ct); 
 
+       // flush
+    //    volatile auto f2 = head->next.load(ct); 
+    //    f2; 
+
        auto list = ct->New<LazyListSet>(); 
        list->head.store(head, ct); 
+       list->tail.store(tail, ct); 
+
+       // flush
+    //    volatile auto f3 = list->tail.load(ct); 
+    //    f3; 
 
        return remus::rdma_ptr<LazyListSet>((uintptr_t)list); 
     }
@@ -109,8 +122,9 @@ public:
     /// @param ct   compute thread
     /// @return true if found, false otherwise 
     bool contains (const int key, CT &ct) {
-        Node* curr = This->head.load(ct); 
+        Node* head = This->head.load(ct); 
         Node* tail = This->tail.load(ct); 
+        Node* curr = head->next.load(ct); 
         while (curr->key.load(ct) < key && curr != tail) {
                     // traverse (no locks) till first curr.key >= key
             curr = curr->next.load(ct); 
@@ -153,9 +167,16 @@ public:
                     node->init(key, ct);            // initialize new node 
                     node->next.store(curr, ct);     // set new node's next to curr
                     pred->next.store(node, ct);     // set pred to point to new node
+
+                    // flush here
+                    // volatile auto _f4 = node->next.load(ct); 
+                    // _f4; 
                     break;
                 }
             }
+            // validation failed -- release locks and try again 
+            curr->release(ct); 
+            pred->release(ct); 
         }
 
         // release locks on pred and curr
@@ -171,12 +192,12 @@ public:
     /// @param ct   compute thread
     /// @return true if successful, false otherwise 
     bool remove(const int key, CT& ct) {
-        //Node *tail = This->tail.load(ct); 
+        Node *tail = This->tail.load(ct); 
         Node *pred, *curr; 
         while (true) {              // keep trying
             pred = This->head.load(ct); 
             curr = pred->next.load(ct); 
-            while (curr->key.load(ct) < key) {
+            while (curr->key.load(ct) < key && curr != tail) {
                     // traverse list (lock free) till first curr.key >= key
                 pred = curr; 
                 curr = curr->next.load(ct); 
@@ -187,17 +208,26 @@ public:
             curr->acquire(ct); 
 
             if (validate(pred, curr, ct)) {
-                if (curr->key.load(ct) != key) {        // if curr key not seek key, can't remove it
+                if (curr->key.load(ct) != key || curr == tail) {        // if curr key not seek key, can't remove it
                     pred->release(ct);
                     curr->release(ct);
                     return false; 
-                } else {
+                } else {        // consider flushing curr->marked.load(ct) and pred->next.load(ct)
                     curr->marked.store(true, ct);               // logically remove
+                    // flush 
+                    // volatile auto f5 = curr->marked.load(ct); 
+                    // f5; 
                     pred->next.store(curr->next.load(ct), ct);  // physically remove
+                    // flush
+                    // volatile auto f6 = pred->next.load(ct); 
+                    // f6; 
                     ct->SchedReclaim(curr);
                     break;
                 }
             }
+            // validate failed -- release locks and try again
+            pred->release(ct); 
+            curr->release(ct); 
         }
 
         pred->release(ct);
@@ -209,14 +239,14 @@ public:
     /// destructor of sorts -- reclaim all nodes, reclaim 'This'
     ///
     /// @param ct   compute thread
-    void destory(CT &ct) {
+    void destroy(CT &ct) {
         Node *curr = This->head.load(ct);
         while (curr) {
             Node *next = curr->next.load(ct);
             ct->Delete(curr);
             curr = next;
         }
-        ct->Delete(this);
+        ct->Delete(This);
     }
     
 };
