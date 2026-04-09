@@ -6,53 +6,11 @@
 
 #include <remus/remus.h>
 
+#include "params.h"
+#include "metrics.h"
+
 using std::uniform_int_distribution; 
 using namespace remus; 
-
-// create a struct, Metrics, to track the execution variables
-struct Metrics {
-    size_t con_s = 0;           // successful contains
-    size_t con_f = 0;           // failed contains
-    size_t ins_s = 0;           // successful insert
-    size_t ins_f = 0;           // failed insert
-    size_t rem_s = 0;           // successful remove
-    size_t rem_f = 0;           // failed remove
-    size_t op_count = 0;        // total num of lazy list operations
-    size_t write_ops = 0;       // total number of RDMA writes          -- tracked by remus -- struct_
-    size_t write_bytes = 0;     // total bytes written over RDMA        -- tracked by remus -- struct_
-    size_t read_ops = 0;        // total number of RDMA reads           -- tracked by remus -- struct_
-    size_t read_bytes = 0;      // total bytes read over RDMA           -- tracked by remus -- struct_
-    size_t faa_ops = 0;         // total num of RDMA faa                -- tracked by remus -- struct_
-    size_t cas_ops = 0;         // total num of RDMA cas                -- tracked by remus -- struct_
-    size_t lock_s = 0;          // successful lock acquire
-    size_t lock_f = 0;          // successful lock fail 
-
-    // (taken from tutorial) 
-    /// write Metrics object to file (metrics.txt)
-    ///
-    /// @param duration    the duration of the experiment (microseconds) 
-    /// @param ct          compute thread for additional metrics 
-    void to_file(double duration, std::shared_ptr<ComputeThread> ct) {
-        std::ofstream file("metrics.txt", std::ios::out); 
-        file << "duration: " << duration << std::endl; 
-        file << "con_s: " << con_s << std::endl; 
-        file << "con_f: " << con_f << std::endl; 
-        file << "ins_s: " << ins_s << std::endl; 
-        file << "ins_f: " << ins_f << std::endl; 
-        file << "rem_s: " << rem_s << std::endl; 
-        file << "rem_f: " << rem_f << std::endl; 
-        file << "op_count: " << op_count << std::endl; 
-        // do these metrics even aggregate??? 
-        file << "writes: " << ct->metrics_.write.ops << std::endl; 
-        file << "write_bytes: " << ct->metrics_.write.bytes << std::endl; 
-        file << "reads: " << ct->metrics_.read.ops << std::endl; 
-        file << "read_bytes: " << ct->metrics_.read.bytes << std::endl; 
-        file << "faa: " << ct->metrics_.faa << std::endl; 
-        file << "cas: " << ct->metrics_.cas << std::endl; 
-        file << "lock_s: " << lock_s << std::endl; 
-        file << "lock_f: " << lock_f << std::endl; 
-    }
-};
 
 struct test {
     using CT = std::shared_ptr<ComputeThread>; 
@@ -102,7 +60,8 @@ struct test {
         // now actuall do the insert
         for (auto key = start_key; key < end_key; key += step) {
             int key_tmp = static_cast<int>(key); 
-            set.insert(key_tmp, ct); 
+            set.insert(key_tmp, ct, metrics); 
+            //set.insert(key_tmp, ct);
         }
     }
 
@@ -113,18 +72,18 @@ struct test {
     void collect(CT &ct, rdma_ptr<Metrics> gMetrics) {
         auto base = gMetrics.raw(); 
         // whole shit ton of faas to update counts of global metrics obj 
-        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, con_s)), metrics.con_s);
+        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, con_t)), metrics.con_t);
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, con_f)), metrics.con_f); 
-        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, ins_s)), metrics.ins_s); 
+        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, ins_t)), metrics.ins_t); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, ins_f)), metrics.ins_f); 
-        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, rem_s)), metrics.rem_s); 
+        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, rem_t)), metrics.rem_t); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, rem_f)), metrics.rem_f); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, op_count)), metrics.op_count); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, write_ops)), metrics.write_ops); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, read_ops)), metrics.read_ops); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, faa_ops)), metrics.faa_ops); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, cas_ops)), metrics.cas_ops); 
-        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, lock_s)), metrics.lock_s); 
+        ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, lock_t)), metrics.lock_t); 
         ct->FetchAndAdd(rdma_ptr<uint64_t>(base + offsetof(Metrics, lock_f)), metrics.lock_f); 
     }
 
@@ -154,23 +113,25 @@ struct test {
             if (action <= contains_ratio) {
                 int key_tmp = static_cast<int>(key); 
                 if (set.contains(key_tmp, ct)) {
-                    ++metrics.con_s; 
+                    ++metrics.con_t; 
                 } else {
                     ++metrics.con_f; 
                 }
             // if in insert_ratio but no contains_ratio
             } else if (action < (contains_ratio + insert_ratio)) {
                 int key_tmp = static_cast<int>(key); 
-                if (set.insert(key_tmp, ct)) {
-                    ++metrics.ins_s; 
+                if (set.insert(key_tmp, ct, metrics)) {
+                //if (set.insert(key_tmp, ct)) {
+                    ++metrics.ins_t; 
                 } else {
                     ++metrics.ins_f; 
                 }
             // if in remove_ratio
             } else {
                 int key_tmp = static_cast<int>(key); 
-                if (set.remove(key_tmp, ct)) {
-                    ++metrics.rem_s; 
+                if (set.remove(key_tmp, ct, metrics)) {
+                //if (set.remove(key_tmp, ct)) {
+                    ++metrics.rem_t; 
                 } else {
                     ++metrics.rem_f; 
                 }

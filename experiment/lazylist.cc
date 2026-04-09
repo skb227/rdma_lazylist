@@ -8,7 +8,7 @@
 
 #include "cloudlab.h"
 #include "nodes.h"
-#include "args.h"
+#include "params.h"
 #include "workload.h"
 
 int main (int argc, char **argv) {
@@ -100,7 +100,7 @@ int main (int argc, char **argv) {
                     LazyListSet set_handle(set_ptr);
 
 
-                    std::cout << "workload should go here!" << std::endl; 
+                    std::cout << "workload should go here" << std::endl; 
 
         // workload test
 

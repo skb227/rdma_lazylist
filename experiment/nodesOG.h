@@ -3,8 +3,6 @@
 #include <memory>
 #include <remus/remus.h>
 
-#include "metrics.h"
-
 using namespace remus; 
 
 /// lazy list implementation of a link list (sorted list), with wait-free contains 
@@ -35,17 +33,13 @@ private:
     /// acquire lock -- tas operation
     ///
     /// @param ct   compute thread
-    uint64_t acquire(CT &ct) {
-        uint64_t fails = 0;
+    void acquire(CT &ct) {
         while(true) {           // loop to keep trying
             if (lock.compare_exchange_weak(0, 1, ct)) {     // equivalent to tas, check if value of lock is 0 and set to 1
                 break;                                          // if old value is 0, break
             } 
-            while (lock.load(ct) == 1) {
-                fails++; 
-            }                   // spin until lock is 0
+            while (lock.load(ct) == 1) {}                   // spin until lock is 0
         }
-        return fails; 
     }
 
     /// release lock 
@@ -57,9 +51,8 @@ private:
 
     };
 
-    /// validate helper method 
+    /// validate helper method ??? --- would require use of marked tho... 
     bool validate(Node* pred, Node* curr, CT &ct) {
-        // check that predecessor still exists, current still exists, and predecessor stll points to current as next node
         return !pred->marked.load(ct) && !curr->marked.load(ct) && pred->next.load(ct) == curr; 
     }
 
@@ -81,7 +74,7 @@ public:
        // rdma_ptr is a "smart pointer" to memory on another machine
        
        auto tail = ct->New<Node>(); 
-       tail->init(5000, ct);
+       tail->init(3000, ct);
 
        auto head = ct->New<Node>(); 
        head->init(0, ct); 
@@ -101,7 +94,7 @@ public:
     /// @param This 
     LazyListSet(const remus::rdma_ptr<LazyListSet> &This) 
         : This((LazyListSet *)((uintptr_t)This)) {}
-
+        
 
     /// wait-free contains
     ///
@@ -120,13 +113,14 @@ public:
         return curr->key.load(ct) == key && !curr->marked.load(ct); 
     }
 
+    
 
     /// insert 
     ///
     /// @param key  key to be inserted
     /// @param ct   compute thread
     /// @return true if success, false otherwise 
-    bool insert (const int key, CT &ct, Metrics &metrics) {
+    bool insert (const int key, CT &ct) {
         Node *head = This->head.load(ct);
         Node *tail = This->tail.load(ct);
         Node *curr, *pred; 
@@ -140,12 +134,8 @@ public:
             }
 
             // need to lock both curr and pred
-            uint64_t failsPred = pred->acquire(ct); 
-            uint64_t failsCurr = curr->acquire(ct); 
-
-            metrics.lock_f += failsPred; 
-            metrics.lock_f += failsCurr; 
-            metrics.lock_t += 2; 
+            pred->acquire(ct); 
+            curr->acquire(ct); 
 
             if (validate(pred, curr, ct)) {     // validate pred and curr after locking
                 if (curr->key.load(ct) == key) {    // key already exists - no insert
@@ -157,6 +147,7 @@ public:
                     node->init(key, ct);            // initialize new node 
                     node->next.store(curr, ct);     // set new node's next to curr
                     pred->next.store(node, ct);     // set pred to point to new node
+
                     break;
                 }
             }
@@ -177,7 +168,7 @@ public:
     /// @param key  key to remove
     /// @param ct   compute thread
     /// @return true if successful, false otherwise 
-    bool remove(const int key, CT& ct, Metrics &metrics) {
+    bool remove(const int key, CT& ct) {
         Node *tail = This->tail.load(ct); 
         Node *pred, *curr; 
         while (true) {              // keep trying
@@ -190,19 +181,15 @@ public:
             }
 
             // lock pred and curr
-            uint64_t failsPred = pred->acquire(ct); 
-            uint64_t failsCurr = curr->acquire(ct); 
-
-            metrics.lock_f += failsPred; 
-            metrics.lock_f += failsCurr; 
-            metrics.lock_t += 2; 
+            pred->acquire(ct); 
+            curr->acquire(ct); 
 
             if (validate(pred, curr, ct)) {
                 if (curr->key.load(ct) != key || curr == tail) {        // if curr key not seek key, can't remove it
                     pred->release(ct);
                     curr->release(ct);
                     return false; 
-                } else {        // consider flushing curr->marked.load(ct) and pred->next.load(ct)
+                } else {      
                     curr->marked.store(true, ct);               // logically remove
                     pred->next.store(curr->next.load(ct), ct);  // physically remove
                     ct->SchedReclaim(curr);
