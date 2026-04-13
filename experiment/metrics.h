@@ -21,8 +21,8 @@ struct Metrics {
     size_t read_bytes = 0;      // total bytes read over RDMA           -- tracked by remus -- struct_
     size_t faa_ops = 0;         // total num of RDMA faa                -- tracked by remus -- struct_
     size_t cas_ops = 0;         // total num of RDMA cas                -- tracked by remus -- struct_
-    size_t lock_t = 0;          // successful lock acquire
-    size_t lock_f = 0;          // successful lock fail 
+    size_t lock_t = 0;          // successful lock acquire  
+    size_t lock_f = 0;          // failed lock acquire
 
     // (taken from tutorial) 
     /// write Metrics object to file (metrics.txt)

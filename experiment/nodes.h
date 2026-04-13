@@ -70,7 +70,7 @@ public:
     remus::Atomic<Node *> tail; 
 
     // 'This' to access consistent RDMA memory location, the shared data object address
-    //      whereas 'this' is local to the thread? or to the LazyListSet object?
+    //      whereas 'this' is local to the LazyListSet object
     LazyListSet *This; 
 
     /// to allocate a LazyList in *remote* memory, initialize it

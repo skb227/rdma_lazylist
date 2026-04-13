@@ -5,6 +5,11 @@
 
 using namespace remus; 
 
+/**
+  same as nodes.h, but was the original version before i started counting
+    how many attempts at lock acquires
+*/
+
 /// lazy list implementation of a link list (sorted list), with wait-free contains 
 class LazyListSet {
 
@@ -51,7 +56,7 @@ private:
 
     };
 
-    /// validate helper method ??? --- would require use of marked tho... 
+    /// validate helper method 
     bool validate(Node* pred, Node* curr, CT &ct) {
         return !pred->marked.load(ct) && !curr->marked.load(ct) && pred->next.load(ct) == curr; 
     }
@@ -63,7 +68,7 @@ public:
     remus::Atomic<Node *> tail; 
 
     // 'This' to access consistent RDMA memory location, the shared data object address
-    //      whereas 'this' is local to the thread? or to the LazyListSet object?
+    //      whereas 'this' is local or to the LazyListSet object
     LazyListSet *This; 
 
     /// to allocate a LazyList in *remote* memory, initialize it
