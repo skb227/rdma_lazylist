@@ -92,7 +92,7 @@ int main (int argc, char **argv) {
                     // wait for all threads to be created across all nodes
                     ct->arrive_control_barrier(total_threads);
 
-                    std::cout << "past barrier 1" << std::endl; 
+                    // std::cout << "past barrier 1" << std::endl; 
 
                     // get the root, make a local reference to it
                     auto set_ptr = ct->get_root<LazyListSet>();
@@ -100,7 +100,7 @@ int main (int argc, char **argv) {
                     LazyListSet set_handle(set_ptr);
 
 
-                    std::cout << "workload should go here" << std::endl; 
+                    // std::cout << "workload should go here" << std::endl; 
 
         // workload test
 
@@ -108,27 +108,27 @@ int main (int argc, char **argv) {
                     test workload(set_handle, i, id); 
                     ct->arrive_control_barrier(total_threads); 
 
-                    std::cout << "past barrier 2" << std::endl; 
+                    // std::cout << "past barrier 2" << std::endl; 
 
                     // prefill data structure
                     workload.prefill(ct, args); 
                     ct->arrive_control_barrier(total_threads); 
 
-                    std::cout << "past barrier 3" << std::endl; 
+                    // std::cout << "past barrier 3" << std::endl; 
 
                     // get starting time before thread does any work 
                     std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now(); 
                     ct->arrive_control_barrier(total_threads); 
 
-                    std::cout << "past barrier 4" << std::endl; 
+                    // std::cout << "past barrier 4" << std::endl; 
 
-                    std::cout << "about to run workload" << std::endl; 
+                    // std::cout << "about to run workload" << std::endl; 
 
                     // run workload 
                     workload.run(ct, args); 
                     ct->arrive_control_barrier(total_threads); 
 
-                    std::cout << "past barrier 5" << std::endl; 
+                    // std::cout << "past barrier 5" << std::endl; 
 
                     // compute end time 
                     auto end_time = std::chrono::high_resolution_clock::now(); 
@@ -142,7 +142,7 @@ int main (int argc, char **argv) {
                     // reclaim memory from prior phase
                     ct->ReclaimDeferred(); 
 
-                    std::cout << "compile metrics objects" << std::endl; 
+                    // std::cout << "compile metrics objects" << std::endl; 
 
                     // first thread of cn0 works with data structure, creates global metrics object
                     if (id == c0 && i == 0) {
@@ -153,21 +153,21 @@ int main (int argc, char **argv) {
                     }
                     ct->arrive_control_barrier(total_threads); 
 
-                    std::cout << "past barrier six" << std::endl; 
+                    // std::cout << "past barrier six" << std::endl; 
 
                     // aggregate metrics across all threads
                     auto metrics = remus::rdma_ptr<Metrics>(ct->get_root<Metrics>());
                     workload.collect(ct, metrics); 
                     ct->arrive_control_barrier(total_threads); 
 
-                    std::cout << "past barrier seven" << std::endl; 
+                    // std::cout << "past barrier seven" << std::endl; 
 
                     // first thread of cn0 write aggregate metrics to file
                     if (id == c0 && i == 0) {
                         compute_threads[0]->Read(metrics).to_file(duration, compute_threads[0]); 
                     }
 
-                    std::cout << "written to file " << std::endl; 
+                    // std::cout << "written to file " << std::endl; 
                 },
             i));
         }
